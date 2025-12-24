@@ -117,6 +117,22 @@ type
     vBC_IS: Currency;
     pIS: Double;
     vIS: Currency;
+
+    // Detalhamento IBS (Reforma Tributária)
+    vIBS_UF: Currency;      // Parte Estadual
+    vIBS_Mun: Currency;     // Parte Municipal
+    pIBS_UF: Double;        // Alíquota Estadual
+    pIBS_Mun: Double;       // Alíquota Municipal
+
+    // Crédito Presumido / Benefícios Fiscais (Reforma)
+    vCredPresumidoIBS: Currency;
+    vCredPresumidoCBS: Currency;
+    pCredPresumidoIBS: Double;
+    pCredPresumidoCBS: Double;
+    
+    // Outros ajustes da Reforma (Valores manuais ou calculados)
+    vEstornoCreditoIBS: Currency;
+    vEstornoCreditoCBS: Currency;
   end;
 
   { TCalculadoraFiscal
@@ -142,6 +158,14 @@ type
     FAliquotaIBS: Double;
     FAliquotaCBS: Double;
     FAliquotaIS: Double; // Imposto Seletivo
+    
+    // Split do IBS (Estadual e Municipal)
+    FAliquotaIBS_UF: Double;
+    FAliquotaIBS_Mun: Double;
+    
+    // Benefícios da Reforma
+    FAliquotaCreditoPresumidoIBS: Double;
+    FAliquotaCreditoPresumidoCBS: Double;
 
     // Alíquotas e Reduções
     FAliquotaICMS: Double;
@@ -161,6 +185,8 @@ type
     
     // Variáveis para ST
     FMVA: Double; // Margem de Valor Agregado
+    FMVAOriginal: Double;
+    FAutoAjustarMVA: Boolean;
     FAliquotaInternaST: Double; // Alíquota do destino
     FReducaoBaseST: Double;
 
@@ -176,6 +202,11 @@ type
     FCST_PIS: String;
     FCST_COFINS: String;
     
+    // CSTs Reforma Tributária (Novos)
+    FCST_IBS: String;
+    FCST_CBS: String;
+    FCST_IS: String;
+    
     // Valores Específicos por Unidade (Pauta)
     FValorUnidIPI: Currency;
     FValorUnidPIS: Currency;
@@ -185,7 +216,6 @@ type
     FResultado: TResultadoImpostos;
 
     procedure ZerarResultado;
-    function GetValorTotalItem: Currency; // Prod + Frete + Seg + Outras - Desc
 
     // Métodos internos de cálculo específicos
     procedure CalcularICMS_Normal;
@@ -195,13 +225,29 @@ type
     procedure CalcularPISCOFINS;
     procedure CalcularFCP;
     procedure CalcularDIFAL; // Novo método para Partilha
-    procedure CalcularReformaTributaria; // Novo método para IBS/CBS/IS
 
   public
     constructor Create;
 
     // Método principal
     procedure Calcular;
+    
+    // Método da Reforma (Tornado público para testes isolados e acesso granular)
+    procedure CalcularReformaTributaria;
+    
+    // Métodos Auxiliares / Getters
+    function GetValorTotalItem: Currency; // Prod + Frete + Seg + Outras - Desc
+
+    // Métodos de Cálculo Isolados (Helpers)
+    // Permitem realizar cálculos específicos sem depender do estado completo do objeto
+    function CalcularBaseReduzida(const aBase: Currency; const aPercentualReducao: Double): Currency;
+    function CalcularValorImposto(const aBase: Currency; const aAliquota: Double): Currency;
+    
+    // Wrappers Semânticos para Reforma Tributária (Cálculo Isolado)
+    function CalcularValorIBS_UF(const aBase: Currency; const aAliquota: Double): Currency;
+    function CalcularValorIBS_Mun(const aBase: Currency; const aAliquota: Double): Currency;
+    function CalcularValorCBS(const aBase: Currency; const aAliquota: Double): Currency;
+    function CalcularValorIS(const aBase: Currency; const aAliquota: Double): Currency;
 
     // Propriedades de Entrada
     property ValorProduto: Currency read FValorProduto write FValorProduto;
@@ -219,6 +265,12 @@ type
     property AliquotaIBS: Double read FAliquotaIBS write FAliquotaIBS;
     property AliquotaCBS: Double read FAliquotaCBS write FAliquotaCBS;
     property AliquotaIS: Double read FAliquotaIS write FAliquotaIS;
+    
+    // Detalhamento Reforma
+    property AliquotaIBS_UF: Double read FAliquotaIBS_UF write FAliquotaIBS_UF;
+    property AliquotaIBS_Mun: Double read FAliquotaIBS_Mun write FAliquotaIBS_Mun;
+    property AliquotaCreditoPresumidoIBS: Double read FAliquotaCreditoPresumidoIBS write FAliquotaCreditoPresumidoIBS;
+    property AliquotaCreditoPresumidoCBS: Double read FAliquotaCreditoPresumidoCBS write FAliquotaCreditoPresumidoCBS;
 
     property AliquotaICMS: Double read FAliquotaICMS write FAliquotaICMS;
     property ReducaoBaseICMS: Double read FReducaoBaseICMS write FReducaoBaseICMS;
@@ -234,6 +286,8 @@ type
     property AliquotaCOFINS: Double read FAliquotaCOFINS write FAliquotaCOFINS;
 
     property MVA: Double read FMVA write FMVA;
+    property MVAOriginal: Double read FMVAOriginal write FMVAOriginal;
+    property AutoAjustarMVA: Boolean read FAutoAjustarMVA write FAutoAjustarMVA;
     property AliquotaInternaST: Double read FAliquotaInternaST write FAliquotaInternaST;
     property ReducaoBaseST: Double read FReducaoBaseST write FReducaoBaseST;
 
@@ -245,6 +299,11 @@ type
     property CST_IPI: String read FCST_IPI write FCST_IPI;
     property CST_PIS: String read FCST_PIS write FCST_PIS;
     property CST_COFINS: String read FCST_COFINS write FCST_COFINS;
+    
+    // CSTs Reforma
+    property CST_IBS: String read FCST_IBS write FCST_IBS;
+    property CST_CBS: String read FCST_CBS write FCST_CBS;
+    property CST_IS: String read FCST_IS write FCST_IS;
 
     property ValorUnidIPI: Currency read FValorUnidIPI write FValorUnidIPI;
     property ValorUnidPIS: Currency read FValorUnidPIS write FValorUnidPIS;
@@ -280,25 +339,60 @@ begin
   if Result < 0 then Result := 0;
 end;
 
+function TCalculadoraFiscal.CalcularBaseReduzida(const aBase: Currency; const aPercentualReducao: Double): Currency;
+begin
+  if aPercentualReducao > 0 then
+    Result := aBase * (1 - (aPercentualReducao / 100))
+  else
+    Result := aBase;
+end;
+
+function TCalculadoraFiscal.CalcularValorImposto(const aBase: Currency; const aAliquota: Double): Currency;
+begin
+  if aAliquota > 0 then
+    Result := RoundTo(aBase * (aAliquota / 100), -2)
+  else
+    Result := 0;
+end;
+
+function TCalculadoraFiscal.CalcularValorIBS_UF(const aBase: Currency; const aAliquota: Double): Currency;
+begin
+  Result := CalcularValorImposto(aBase, aAliquota);
+end;
+
+function TCalculadoraFiscal.CalcularValorIBS_Mun(const aBase: Currency; const aAliquota: Double): Currency;
+begin
+  Result := CalcularValorImposto(aBase, aAliquota);
+end;
+
+function TCalculadoraFiscal.CalcularValorCBS(const aBase: Currency; const aAliquota: Double): Currency;
+begin
+  Result := CalcularValorImposto(aBase, aAliquota);
+end;
+
+function TCalculadoraFiscal.CalcularValorIS(const aBase: Currency; const aAliquota: Double): Currency;
+begin
+  Result := CalcularValorImposto(aBase, aAliquota);
+end;
+
 procedure TCalculadoraFiscal.CalcularICMS_Normal;
 var
   BaseCalc, BaseIntegral, ValorICMSIntegral: Currency;
 begin
   BaseIntegral := GetValorTotalItem;
-  BaseCalc := BaseIntegral;
-
-  // Aplica Redução de Base de Cálculo se houver
-  if FReducaoBaseICMS > 0 then
-    BaseCalc := BaseCalc * (1 - (FReducaoBaseICMS / 100));
+  
+  // Aplica Redução de Base de Cálculo se houver (Usa helper)
+  BaseCalc := CalcularBaseReduzida(BaseIntegral, FReducaoBaseICMS);
 
   FResultado.vBC_ICMS := BaseCalc;
   FResultado.pICMS := FAliquotaICMS;
-  FResultado.vICMS := RoundTo(BaseCalc * (FAliquotaICMS / 100), -2);
+  // Usa helper para cálculo do valor
+  FResultado.vICMS := CalcularValorImposto(BaseCalc, FAliquotaICMS);
   
   // Cálculo de Desoneração (ICMS que deixou de ser pago devido à redução)
   if (FReducaoBaseICMS > 0) and (FMotivoDesoneracao > 0) then
   begin
-    ValorICMSIntegral := RoundTo(BaseIntegral * (FAliquotaICMS / 100), -2);
+    ValorICMSIntegral := CalcularValorImposto(BaseIntegral, FAliquotaICMS);
     FResultado.vICMSDeson := ValorICMSIntegral - FResultado.vICMS;
     FResultado.motDesICMS := FMotivoDesoneracao;
   end;
@@ -311,7 +405,7 @@ begin
     
     if FAliquotaDiferimento > 0 then
     begin
-      FResultado.vICMSDif := RoundTo(FResultado.vICMSOp * (FAliquotaDiferimento / 100), -2);
+      FResultado.vICMSDif := CalcularValorImposto(FResultado.vICMSOp, FAliquotaDiferimento);
       FResultado.vICMS := FResultado.vICMSOp - FResultado.vICMSDif; // Valor devido é o que sobra
     end;
   end;
@@ -352,7 +446,30 @@ procedure TCalculadoraFiscal.CalcularICMS_ST;
 var
   BaseST: Currency;
   ValorICMSProprio: Currency;
+  Coeficiente: Double;
 begin
+  // 0. Ajuste de MVA (Se solicitado)
+  // Fórmula: MVA Ajustada = [(1 + MVA_Orig) * (1 - Alq_Inter) / (1 - Alq_Intra)] - 1
+  if FAutoAjustarMVA and (FMVAOriginal > 0) then
+  begin
+    // Valida se temos as alíquotas necessárias para o ajuste
+    // Alíquota Interestadual (ICMS Próprio da operação) e Interna do Destino (ST)
+    if (FAliquotaICMS > 0) and (FAliquotaInternaST > FAliquotaICMS) then
+    begin
+      Coeficiente := (1 + (FMVAOriginal / 100)) * (1 - (FAliquotaICMS / 100)) / (1 - (FAliquotaInternaST / 100));
+      FMVA := RoundTo((Coeficiente - 1) * 100, -2); // Arredonda para 2 casas
+    end
+    else
+    begin
+      FMVA := FMVAOriginal; // Não ajusta se alíquota interna <= interestadual ou inválida
+    end;
+  end
+  else if (FMVAOriginal > 0) and (FMVA = 0) then
+  begin
+    // Se passou MVA Original mas não pediu ajuste e não passou MVA efetiva, usa a Original
+    FMVA := FMVAOriginal;
+  end;
+
   // 1. Calcula o ICMS Próprio (usado para abater no ST)
   // Nota: Mesmo que o emitente seja Simples Nacional, para fins de cálculo de ST, 
   // muitas vezes usa-se a regra geral ou alíquotas interestaduais. 
@@ -539,6 +656,31 @@ end;
 procedure TCalculadoraFiscal.CalcularReformaTributaria;
 var
   BaseCalculo: Currency;
+  BaseCredPresumido: Currency;
+  
+  // Função auxiliar para verificar CST Tributado
+  function IsCSTTributado(const aCST: String): Boolean;
+  begin
+    // Se vazio, assume tributado se tiver alíquota (comportamento padrão)
+    if aCST = '' then Exit(True);
+    
+    // Lista de CSTs Tributados (Baseada em padrões de PIS/COFINS e futura NT)
+    // 01: Operação Tributável com Alíquota Básica
+    // 02: Operação Tributável com Alíquota Diferenciada
+    // 50..66: Outras operações com direito a crédito
+    Result := (aCST = '01') or (aCST = '02') or (StrToIntDef(aCST, 0) >= 50);
+  end;
+  
+  // Função auxiliar para verificar CST Isento/Imune/Suspenso
+  function IsCSTIsentoOuImune(const aCST: String): Boolean;
+  begin
+    // 04: Isenta
+    // 05: Imune
+    // 06: Suspensa
+    // 40..49: Operações sem incidência
+    Result := (aCST = '04') or (aCST = '05') or (aCST = '06') or ((StrToIntDef(aCST, 0) >= 40) and (StrToIntDef(aCST, 0) <= 49));
+  end;
+  
 begin
   // Base de Cálculo Geral: Valor do Item + Despesas Acessórias - Descontos
   // IMPORTANTE: IBS e CBS incidem sobre o valor da operação "por fora", mas para fins
@@ -547,32 +689,106 @@ begin
   
   BaseCalculo := GetValorTotalItem;
 
-  // Cálculo IBS (Imposto sobre Bens e Serviços)
-  if FAliquotaIBS > 0 then
+  // --- Cálculo IBS (Imposto sobre Bens e Serviços) ---
+  
+  // Verifica Situação Tributária (CST)
+  // Se for Isento/Imune e não tivermos regra específica de "Manter Base", zeramos tudo.
+  if IsCSTIsentoOuImune(FCST_IBS) then
   begin
-    FResultado.vBC_IBS := BaseCalculo;
-    FResultado.pIBS := FAliquotaIBS;
-    FResultado.vIBS := RoundTo(BaseCalculo * (FAliquotaIBS / 100), -2);
+    FResultado.vBC_IBS := 0;
+    FResultado.pIBS := 0;
+    FResultado.vIBS := 0;
+    FResultado.pIBS_UF := 0;
+    FResultado.vIBS_UF := 0;
+    FResultado.pIBS_Mun := 0;
+    FResultado.vIBS_Mun := 0;
+  end
+  else
+  // Se for Tributado ou Genérico (sem CST informado mas com alíquota)
+  if IsCSTTributado(FCST_IBS) then
+  begin
+    // Se houver split informado (UF/Mun), calcula detalhado
+    if (FAliquotaIBS_UF > 0) or (FAliquotaIBS_Mun > 0) then
+    begin
+      FResultado.vBC_IBS := BaseCalculo;
+      
+      // Parte Estadual
+      if FAliquotaIBS_UF > 0 then
+      begin
+        FResultado.pIBS_UF := FAliquotaIBS_UF;
+        FResultado.vIBS_UF := CalcularValorIBS_UF(BaseCalculo, FAliquotaIBS_UF);
+      end;
+      
+      // Parte Municipal
+      if FAliquotaIBS_Mun > 0 then
+      begin
+        FResultado.pIBS_Mun := FAliquotaIBS_Mun;
+        FResultado.vIBS_Mun := CalcularValorIBS_Mun(BaseCalculo, FAliquotaIBS_Mun);
+      end;
+      
+      // Totaliza IBS
+      FResultado.vIBS := FResultado.vIBS_UF + FResultado.vIBS_Mun;
+      // Recalcula alíquota total efetiva se não foi informada
+      if FAliquotaIBS = 0 then
+        FResultado.pIBS := FAliquotaIBS_UF + FAliquotaIBS_Mun
+      else
+        FResultado.pIBS := FAliquotaIBS;
+    end
+    else if FAliquotaIBS > 0 then
+    begin
+      // Cálculo Simples (sem split)
+      FResultado.vBC_IBS := BaseCalculo;
+      FResultado.pIBS := FAliquotaIBS;
+      FResultado.vIBS := CalcularValorImposto(BaseCalculo, FAliquotaIBS);
+    end;
   end;
 
-  // Cálculo CBS (Contribuição sobre Bens e Serviços)
-  if FAliquotaCBS > 0 then
+  // --- Cálculo CBS (Contribuição sobre Bens e Serviços) ---
+  
+  if IsCSTIsentoOuImune(FCST_CBS) then
+  begin
+    FResultado.vBC_CBS := 0;
+    FResultado.pCBS := 0;
+    FResultado.vCBS := 0;
+  end
+  else if IsCSTTributado(FCST_CBS) and (FAliquotaCBS > 0) then
   begin
     FResultado.vBC_CBS := BaseCalculo;
     FResultado.pCBS := FAliquotaCBS;
-    FResultado.vCBS := RoundTo(BaseCalculo * (FAliquotaCBS / 100), -2);
+    FResultado.vCBS := CalcularValorCBS(BaseCalculo, FAliquotaCBS);
+  end;
+  
+  // --- Cálculo de Crédito Presumido (Reforma) ---
+  // Geralmente vinculado a CSTs específicos, mas vamos manter a lógica de alíquota > 0 por enquanto
+  if (FAliquotaCreditoPresumidoIBS > 0) or (FAliquotaCreditoPresumidoCBS > 0) then
+  begin
+    BaseCredPresumido := BaseCalculo; // Assume mesma base, salvo regra específica
+    
+    if FAliquotaCreditoPresumidoIBS > 0 then
+    begin
+      FResultado.pCredPresumidoIBS := FAliquotaCreditoPresumidoIBS;
+      FResultado.vCredPresumidoIBS := CalcularValorImposto(BaseCredPresumido, FAliquotaCreditoPresumidoIBS);
+    end;
+    
+    if FAliquotaCreditoPresumidoCBS > 0 then
+    begin
+      FResultado.pCredPresumidoCBS := FAliquotaCreditoPresumidoCBS;
+      FResultado.vCredPresumidoCBS := CalcularValorImposto(BaseCredPresumido, FAliquotaCreditoPresumidoCBS);
+    end;
   end;
 
-  // Cálculo IS (Imposto Seletivo) - Incide sobre produtos prejudiciais à saúde/meio ambiente
-  // A base do IS também é o valor da operação, mas o IS integra a base do ICMS/ISS e do próprio IBS/CBS?
-  // Pela regra geral da reforma, o IS compõe a base de cálculo do ICMS, ISS, IBS e CBS.
-  // No entanto, para simplificação inicial neste método, usaremos a base do item.
-  // Caso o IS deva compor a base dos outros, a ordem de chamada dos métodos deve ser ajustada.
-  if FAliquotaIS > 0 then
+  // --- Cálculo IS (Imposto Seletivo) ---
+  if IsCSTIsentoOuImune(FCST_IS) then
+  begin
+    FResultado.vBC_IS := 0;
+    FResultado.pIS := 0;
+    FResultado.vIS := 0;
+  end
+  else if (FAliquotaIS > 0) and IsCSTTributado(FCST_IS) then
   begin
     FResultado.vBC_IS := BaseCalculo;
     FResultado.pIS := FAliquotaIS;
-    FResultado.vIS := RoundTo(BaseCalculo * (FAliquotaIS / 100), -2);
+    FResultado.vIS := CalcularValorIS(BaseCalculo, FAliquotaIS);
   end;
 end;
 
