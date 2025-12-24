@@ -1,96 +1,108 @@
-# 📘 Documentação: Classe TCalculadoraFiscal
+# 📘 Manual da Calculadora Fiscal (NFe / NFCe)
 
-> **Localização do Arquivo:** `Services\Unit_CalculoImpostos.pas`
-
-Esta documentação serve como guia de referência para a utilização da classe `TCalculadoraFiscal`, responsável por centralizar a lógica tributária do emissor de NF-e, incluindo as novas regras da **Reforma Tributária (IBS/CBS/IS)**.
+> **Autor:** Vitor Scarso  
+> **Versão:** 1.0  
+> **Data:** 24/12/2025
 
 ---
 
-## 🚀 Como Usar (Guia Rápido)
+## 🎯 O que é isso?
 
-Para realizar um cálculo, siga este fluxo de 4 passos simples:
+Esta é uma unidade inteligente (`Unit_CalculoImpostos`) projetada para **facilitar** a vida do desenvolvedor Delphi/Lazarus. Ela centraliza todas as regras chatas e complexas de tributação (ICMS, ST, IPI, PIS, COFINS e a nova **Reforma Tributária**) em uma única classe fácil de usar.
 
-1.  **Instancie** a classe.
-2.  **Configure** o item (Valores e Quantidades).
-3.  **Defina as Regras** (Regime, CST, Alíquotas).
-4.  **Execute** `.Calcular` e leia o `.Resultado`.
+Você pode usá-la de duas formas:
+1. 🧮 **Calculadora de Bolso:** Para fazer contas rápidas e isoladas.
+2. 📝 **Emissão de Notas:** Para calcular todos os impostos de um item e preencher o componente ACBr.
 
-### 📝 Exemplo de Código
+---
+
+## 🚀 1. Modo "Calculadora de Bolso" (Cálculos Rápidos)
+
+Às vezes você só quer saber quanto é o **IBS** de um valor, ou qual a **Base Reduzida** de um produto, sem precisar criar uma Nota Fiscal inteira. Use os métodos isolados!
+
+### Tabela de Métodos Disponíveis
+
+| O que você quer calcular? | Método para chamar | Exemplo |
+| :--- | :--- | :--- |
+| **Imposto Simples** | `CalcularValorImposto` | 18% de R$ 100,00 = R$ 18,00 |
+| **Base Reduzida** | `CalcularBaseReduzida` | Reduzir 20% de R$ 1.000,00 = R$ 800,00 |
+| **IBS Estadual** | `CalcularValorIBS_UF` | IBS UF da Reforma Tributária |
+| **IBS Municipal** | `CalcularValorIBS_Mun` | IBS Mun da Reforma Tributária |
+| **CBS** | `CalcularValorCBS` | CBS Federal |
+| **Imposto Seletivo** | `CalcularValorIS` | Imposto do "Pecado" |
+
+### 💡 Exemplo Prático
 
 ```pascal
-uses Unit_CalculoImpostos;
-
 var
   Calc: TCalculadoraFiscal;
+  ValorIBS, BaseReduzida: Currency;
 begin
   Calc := TCalculadoraFiscal.Create;
   try
-    // -------------------------------------------------------
-    // 📦 1. DADOS DO ITEM (Entradas Básicas)
-    // -------------------------------------------------------
-    Calc.ValorProduto        := 1000.00;
-    Calc.Quantidade          := 1;
-    Calc.ValorFrete          := 50.00;
-    Calc.ValorDesconto       := 10.00; // Desconto incondicional
+    // 1. Quero saber quanto é 17% de IBS sobre R$ 500,00
+    ValorIBS := Calc.CalcularValorIBS_UF(500.00, 17.00);
+    ShowMessage('O valor do IBS é: ' + CurrToStr(ValorIBS));
 
-    // -------------------------------------------------------
-    // ⚙️ 2. PERFIL DO EMITENTE & PRODUTO
-    // -------------------------------------------------------
-    Calc.Regime     := rtRegimeNormal;   // ou rtSimplesNacional
-    Calc.Origem     := omNacional;       // Origem 0
-    Calc.CST_CSOSN  := '10';             // CST 10 (ICMS ST)
+    // 2. Quero aplicar uma redução de 60% na base de R$ 1.000,00
+    BaseReduzida := Calc.CalcularBaseReduzida(1000.00, 60.00);
+    ShowMessage('A base tributável é apenas: ' + CurrToStr(BaseReduzida));
+  finally
+    Calc.Free;
+  end;
+end;
+```
 
-    // -------------------------------------------------------
-    // 💰 3. ALÍQUOTAS (Sistema Atual)
-    // -------------------------------------------------------
-    Calc.AliquotaICMS        := 18.00;   // 18%
-    Calc.AliquotaIPI         := 5.00;    // 5%
-    Calc.AliquotaPIS         := 1.65;
-    Calc.AliquotaCOFINS      := 7.60;
+---
 
-    // 🔄 Substituição Tributária (ST)
-    Calc.MVA                 := 40.00;   // Margem de Valor Agregado
-    Calc.AliquotaInternaST   := 18.00;   // Alíquota destino
+## 🔌 2. Integrando com o ACBr (O Pulo do Gato)
+
+Esta classe foi feita pensando em preencher o componente **ACBrNFe**. Primeiro você calcula, depois você joga os valores para o componente.
+
+### Exemplo de Uso Real
+
+```pascal
+var
+  Calc: TCalculadoraFiscal;
+  Prod: TDetCollectionItem; // Item do ACBr
+begin
+  // 1. Configurar a Calculadora
+  Calc := TCalculadoraFiscal.Create;
+  try
+    // Dados do Produto
+    Calc.ValorProduto := 1000.00;
+    Calc.ValorFrete   := 50.00;
     
-    // -------------------------------------------------------
-    // 🆕 4. REFORMA TRIBUTÁRIA (IBS / CBS / IS)
-    // -------------------------------------------------------
-    Calc.AliquotaIBS         := 17.00;   // Imposto sobre Bens e Serviços
-    Calc.AliquotaCBS         := 9.00;    // Contribuição sobre Bens e Serviços
-    Calc.AliquotaIS          := 0.00;    // Imposto Seletivo ("Pecado")
-
-    // -------------------------------------------------------
-    // 🌍 5. DIFAL / FCP / DESONERAÇÃO (Avançado)
-    // -------------------------------------------------------
-    // DIFAL (Venda Interestadual Consumidor Final)
-    Calc.AliquotaICMSInter   := 12.00;   // Interestadual (4, 7 ou 12)
-    Calc.AliquotaICMSIntra   := 18.00;   // Destino
-    Calc.AliquotaFCPDest     := 2.00;    // Fundo Pobreza Destino
-
-    // Diferimento (CST 51)
-    Calc.AliquotaDiferimento := 33.33;   // % do imposto que será diferido
-
-    // -------------------------------------------------------
-    // 🏭 6. IPI / PIS / COFINS (Por Situação Tributária)
-    // -------------------------------------------------------
-    Calc.CST_IPI     := '50';    // Saída Tributada
-    Calc.CST_PIS     := '01';    // Operação Tributável Base Cheia
-    Calc.CST_COFINS  := '01';
+    // Configuração Fiscal (Ex: Venda para Consumidor - CST 00)
+    Calc.Regime       := rtRegimeNormal;
+    Calc.CST_CSOSN    := '00';
+    Calc.AliquotaICMS := 18.00;
     
-    // Exemplo PIS/COFINS por Quantidade (CST 03)
-    // Calc.CST_PIS     := '03';
-    // Calc.ValorUnidPIS := 1.50; // R$ 1,50 por unidade
-
-    // -------------------------------------------------------
-    // ✅ 7. EXECUTAR & LER
-    // -------------------------------------------------------
+    // === CALCULAR TUDO AGORA ===
     Calc.Calcular;
-
-    // Lendo os valores calculados:
-    ShowMessage('Base ICMS: ' + CurrToStr(Calc.Resultado.vBC_ICMS));
-    ShowMessage('DIFAL Destino: ' + CurrToStr(Calc.Resultado.vICMS_UF_Dest));
-    ShowMessage('Valor IPI: ' + CurrToStr(Calc.Resultado.vIPI));
-    ShowMessage('Valor IBS: ' + CurrToStr(Calc.Resultado.vIBS));
+    
+    // 2. Preencher o ACBr
+    // Supondo que você já adicionou o item no componente ACBr
+    with Prod.Imposto.ICMS do 
+    begin
+      CST      := cst00; 
+      orig     := oeNacional;
+      modBC    := dbiValorOperacao;
+      
+      // Aqui entram os valores calculados pela nossa classe!
+      vBC      := Calc.Resultado.vBC_ICMS;
+      pICMS    := Calc.Resultado.pICMS;
+      vICMS    := Calc.Resultado.vICMS;
+    end;
+    
+    // Se tiver PIS/COFINS também já está pronto:
+    with Prod.Imposto.PIS do
+    begin
+      CST  := pis01;
+      vBC  := Calc.Resultado.vBC_PIS;
+      pPIS := Calc.Resultado.pPIS;
+      vPIS := Calc.Resultado.vPIS;
+    end;
     
   finally
     Calc.Free;
@@ -100,51 +112,34 @@ end;
 
 ---
 
-## 🔑 Propriedades Importantes
+## ⚖️ 3. Reforma Tributária (IBS e CBS)
 
-Aqui estão as propriedades que você **precisa** preencher para garantir o cálculo correto.
+A classe já está preparada para o futuro! Ela entende os novos códigos de situação tributária (CST) da Reforma.
 
-### 📦 Entradas (Valores Monetários)
-| Propriedade | Tipo | Obrigatório? | Descrição |
-| :--- | :--- | :---: | :--- |
-| `ValorProduto` | `Currency` | 🔴 **SIM** | Valor total bruto dos produtos. |
-| `Quantidade` | `Double` | 🔴 **SIM** | Quantidade comercializada. |
-| `ValorFrete` | `Currency` | ⚪ Opcional | Soma-se à base de cálculo. |
-| `ValorSeguro` | `Currency` | ⚪ Opcional | Soma-se à base de cálculo. |
-| `ValorDesconto` | `Currency` | ⚪ Opcional | Deduz-se da base de cálculo. |
-| `ValorOutrasDespesas`| `Currency` | ⚪ Opcional | Soma-se à base de cálculo. |
+### Como funciona?
 
-### ⚙️ Configuração Fiscal
-| Propriedade | Descrição Importante |
-| :--- | :--- |
-| `Regime` | Define se calcula como **Normal** (CST) ou **Simples** (CSOSN). <br> Valores: `rtRegimeNormal`, `rtSimplesNacional` |
-| `CST_CSOSN` | **CRÍTICO:** Define qual fórmula usar. <br> Ex: `'00'` (Tributado Integral), `'10'` (Com ST), `'101'` (Simples c/ Crédito). |
-| `Origem` | Origem da Mercadoria (`omNacional`, `omEstrangeira...`). |
+Se você informar um CST de **Isenção** (ex: `04`), a calculadora vai zerar o imposto automaticamente, mesmo que você tenha informado uma alíquota. Isso evita erros de cálculo!
 
-### 🏭 IPI / PIS / COFINS (Situação Tributária)
-| Propriedade | Descrição |
-| :--- | :--- |
-| `CST_IPI` | Código da Situação Tributária do IPI (Ex: '50' Tributado, '51' Isento). |
-| `CST_PIS` | CST do PIS (Ex: '01' Tributável, '03' Por Qtde, '06' Alíquota Zero). |
-| `CST_COFINS` | CST da COFINS (Segue a mesma lógica do PIS). |
-| `ValorUnidIPI` | Valor em Reais por unidade (Pauta) para cálculo específico. |
-| `ValorUnidPIS` | Valor em Reais por unidade para PIS (CST 03). |
-| `ValorUnidCOFINS`| Valor em Reais por unidade para COFINS (CST 03). |
-
-### 🌍 Configurações Avançadas (DIFAL / Desoneração / Diferimento)
-| Propriedade | Descrição |
-| :--- | :--- |
-| `AliquotaICMSInter` | Alíquota Interestadual (4%, 7% ou 12%) para cálculo do DIFAL. |
-| `AliquotaICMSIntra` | Alíquota Interna do estado de destino para cálculo do DIFAL. |
-| `AliquotaFCPDest` | Alíquota do Fundo de Combate à Pobreza no estado de destino. |
-| `AliquotaDiferimento` | Percentual do imposto que será diferido (CST 51). Ex: 100% ou 33.33%. |
-| `MotivoDesoneracao` | Código do motivo da desoneração do ICMS (Ex: 7=SUFRAMA, 9=Outros). |
+```pascal
+  // Exemplo: Produto Isento na Reforma
+  Calc.CST_IBS := '04'; // Operação Isenta
+  Calc.AliquotaIBS_UF := 12.00; 
+  
+  Calc.CalcularReformaTributaria;
+  
+  // O resultado será ZERO, pois o CST manda isentar.
+  // Calc.Resultado.vIBS_UF -> 0.00
+```
 
 ---
 
-## 👨‍💻 Autor e Créditos
+## ✨ Dicas de Ouro
 
-**Desenvolvido por:** Vitor Scarso  
-**GitHub:** [github/vscarso](https://github.com/vscarso)  
+1. **Auto Ajuste de MVA**: Se você estiver calculando ST interestadual, ative a propriedade `AutoAjustarMVA := True`. A classe fará a fórmula complexa do ajuste automaticamente.
+2. **DIFAL**: A classe também calcula o DIFAL (Partilha de ICMS) para vendas interestaduais para consumidor final.
+3. **Desoneração**: Se você informar `% Redução` e `Motivo Desoneração`, ela calcula automaticamente o "ICMS Desonerado" (aquele que é abatido do valor da nota).
 
-Esta classe foi projetada para ser modular e independente, facilitando a integração em projetos existentes sem a necessidade de refatoração profunda.
+---
+
+> **Dúvidas?** Consulte o código fonte em `Unit_CalculoImpostos.pas`, ele está todo comentado!
+
