@@ -46,6 +46,16 @@ type
     pICMS: Double;
     vICMS: Currency;
     modBC: Integer; // 0=Margem Valor Agregado, 3=Valor Operação, etc.
+    pRedBC: Double; // Percentual de Redução de Base
+
+    // ICMS Diferido (CST 51)
+    vICMSOp: Currency;    // Valor do ICMS da Operação
+    pDif: Double;         // Percentual do Diferimento
+    vICMSDif: Currency;   // Valor do ICMS Diferido
+
+    // ICMS Desonerado
+    vICMSDeson: Currency;
+    motDesICMS: Integer;  // Motivo da desoneração
 
     // ICMS ST (Substituição Tributária)
     vBC_ST: Currency;
@@ -68,6 +78,17 @@ type
     vBC_COFINS: Currency;
     pCOFINS: Double;
     vCOFINS: Currency;
+
+    // DIFAL (Partilha ICMS Interestadual)
+    vBC_UF_Dest: Currency;
+    vBC_FCP_UF_Dest: Currency;
+    pFCP_UF_Dest: Double;
+    vFCP_UF_Dest: Currency;
+    pICMS_UF_Dest: Double;
+    pICMS_Inter: Double;
+    pICMS_Partilha: Double;
+    vICMS_UF_Dest: Currency;
+    vICMS_UF_Remet: Currency;
 
     // Simples Nacional (Crédito)
     pCredSN: Double;
@@ -125,6 +146,13 @@ type
     // Alíquotas e Reduções
     FAliquotaICMS: Double;
     FReducaoBaseICMS: Double; // Em % (ex: 33.33)
+    FAliquotaDiferimento: Double; // Para CST 51 (ex: 100% ou 33.33%)
+    FMotivoDesoneracao: Integer; // Para CST 20, 30, 40, etc.
+    
+    // DIFAL
+    FAliquotaICMSInter: Double; // Interestadual (4, 7 ou 12)
+    FAliquotaICMSIntra: Double; // Interna Destino (ex: 18)
+    FAliquotaFCPDest: Double;   // FCP no Destino
     
     FAliquotaIPI: Double;
     
@@ -142,6 +170,16 @@ type
     // Variáveis para FCP
     FAliquotaFCP: Double;
     FAliquotaFCPST: Double;
+    
+    // CSTs Específicos (além do CST_CSOSN do ICMS)
+    FCST_IPI: String;
+    FCST_PIS: String;
+    FCST_COFINS: String;
+    
+    // Valores Específicos por Unidade (Pauta)
+    FValorUnidIPI: Currency;
+    FValorUnidPIS: Currency;
+    FValorUnidCOFINS: Currency;
 
     // Resultado
     FResultado: TResultadoImpostos;
@@ -156,6 +194,7 @@ type
     procedure CalcularIPI;
     procedure CalcularPISCOFINS;
     procedure CalcularFCP;
+    procedure CalcularDIFAL; // Novo método para Partilha
     procedure CalcularReformaTributaria; // Novo método para IBS/CBS/IS
 
   public
@@ -183,6 +222,12 @@ type
 
     property AliquotaICMS: Double read FAliquotaICMS write FAliquotaICMS;
     property ReducaoBaseICMS: Double read FReducaoBaseICMS write FReducaoBaseICMS;
+    property AliquotaDiferimento: Double read FAliquotaDiferimento write FAliquotaDiferimento;
+    property MotivoDesoneracao: Integer read FMotivoDesoneracao write FMotivoDesoneracao;
+
+    property AliquotaICMSInter: Double read FAliquotaICMSInter write FAliquotaICMSInter;
+    property AliquotaICMSIntra: Double read FAliquotaICMSIntra write FAliquotaICMSIntra;
+    property AliquotaFCPDest: Double read FAliquotaFCPDest write FAliquotaFCPDest;
 
     property AliquotaIPI: Double read FAliquotaIPI write FAliquotaIPI;
     property AliquotaPIS: Double read FAliquotaPIS write FAliquotaPIS;
@@ -196,6 +241,14 @@ type
     
     property AliquotaFCP: Double read FAliquotaFCP write FAliquotaFCP;
     property AliquotaFCPST: Double read FAliquotaFCPST write FAliquotaFCPST;
+
+    property CST_IPI: String read FCST_IPI write FCST_IPI;
+    property CST_PIS: String read FCST_PIS write FCST_PIS;
+    property CST_COFINS: String read FCST_COFINS write FCST_COFINS;
+
+    property ValorUnidIPI: Currency read FValorUnidIPI write FValorUnidIPI;
+    property ValorUnidPIS: Currency read FValorUnidPIS write FValorUnidPIS;
+    property ValorUnidCOFINS: Currency read FValorUnidCOFINS write FValorUnidCOFINS;
 
     // Acesso ao Resultado
     property Resultado: TResultadoImpostos read FResultado;
@@ -229,9 +282,10 @@ end;
 
 procedure TCalculadoraFiscal.CalcularICMS_Normal;
 var
-  BaseCalc: Currency;
+  BaseCalc, BaseIntegral, ValorICMSIntegral: Currency;
 begin
-  BaseCalc := GetValorTotalItem;
+  BaseIntegral := GetValorTotalItem;
+  BaseCalc := BaseIntegral;
 
   // Aplica Redução de Base de Cálculo se houver
   if FReducaoBaseICMS > 0 then
@@ -240,6 +294,58 @@ begin
   FResultado.vBC_ICMS := BaseCalc;
   FResultado.pICMS := FAliquotaICMS;
   FResultado.vICMS := RoundTo(BaseCalc * (FAliquotaICMS / 100), -2);
+  
+  // Cálculo de Desoneração (ICMS que deixou de ser pago devido à redução)
+  if (FReducaoBaseICMS > 0) and (FMotivoDesoneracao > 0) then
+  begin
+    ValorICMSIntegral := RoundTo(BaseIntegral * (FAliquotaICMS / 100), -2);
+    FResultado.vICMSDeson := ValorICMSIntegral - FResultado.vICMS;
+    FResultado.motDesICMS := FMotivoDesoneracao;
+  end;
+  
+  // Cálculo de Diferimento (CST 51)
+  if (FCST_CSOSN = '51') then
+  begin
+    FResultado.vICMSOp := FResultado.vICMS; // Valor da operação antes do diferimento
+    FResultado.pDif := FAliquotaDiferimento;
+    
+    if FAliquotaDiferimento > 0 then
+    begin
+      FResultado.vICMSDif := RoundTo(FResultado.vICMSOp * (FAliquotaDiferimento / 100), -2);
+      FResultado.vICMS := FResultado.vICMSOp - FResultado.vICMSDif; // Valor devido é o que sobra
+    end;
+  end;
+end;
+
+procedure TCalculadoraFiscal.CalcularDIFAL;
+var
+  BaseDIFAL, DifAliquota: Double;
+begin
+  BaseDIFAL := GetValorTotalItem;
+  
+  // DIFAL = Base * (AlqIntra - AlqInter)
+  // Assumindo partilha 100% destino (padrão atual)
+  
+  if FAliquotaICMSIntra > FAliquotaICMSInter then
+  begin
+    DifAliquota := FAliquotaICMSIntra - FAliquotaICMSInter;
+    
+    FResultado.vBC_UF_Dest := BaseDIFAL;
+    FResultado.pICMS_UF_Dest := FAliquotaICMSIntra;
+    FResultado.pICMS_Inter := FAliquotaICMSInter;
+    FResultado.pICMS_Partilha := 100; // 100% para destino
+    
+    FResultado.vICMS_UF_Dest := RoundTo(BaseDIFAL * (DifAliquota / 100), -2);
+    FResultado.vICMS_UF_Remet := 0; // Sem partilha para remetente atualmente
+  end;
+  
+  // FCP Destino
+  if FAliquotaFCPDest > 0 then
+  begin
+    FResultado.vBC_FCP_UF_Dest := BaseDIFAL;
+    FResultado.pFCP_UF_Dest := FAliquotaFCPDest;
+    FResultado.vFCP_UF_Dest := RoundTo(BaseDIFAL * (FAliquotaFCPDest / 100), -2);
+  end;
 end;
 
 procedure TCalculadoraFiscal.CalcularICMS_ST;
@@ -312,11 +418,36 @@ procedure TCalculadoraFiscal.CalcularIPI;
 var
   BaseIPI: Currency;
 begin
-  BaseIPI := GetValorTotalItem; // Geralmente Frete e Seguro entram na base do IPI
-  
-  FResultado.vBC_IPI := BaseIPI;
-  FResultado.pIPI := FAliquotaIPI;
-  FResultado.vIPI := RoundTo(BaseIPI * (FAliquotaIPI / 100), -2);
+  // Se CST não foi informado, mas tem alíquota, assume tributado (comportamento legado)
+  if (FCST_IPI = '') and (FAliquotaIPI > 0) then FCST_IPI := '50';
+
+  // CSTs de Saída Tributada: 50, 49, 99
+  // CSTs de Entrada Tributada: 00, 49, 99
+  if (FCST_IPI = '00') or (FCST_IPI = '49') or (FCST_IPI = '50') or (FCST_IPI = '99') then
+  begin
+    // Cálculo por Alíquota (Ad Valorem)
+    if FAliquotaIPI > 0 then
+    begin
+      BaseIPI := GetValorTotalItem; // Geralmente Frete e Seguro entram na base do IPI
+      FResultado.vBC_IPI := BaseIPI;
+      FResultado.pIPI := FAliquotaIPI;
+      FResultado.vIPI := RoundTo(BaseIPI * (FAliquotaIPI / 100), -2);
+    end
+    // Cálculo por Unidade (Pauta)
+    else if FValorUnidIPI > 0 then
+    begin
+      FResultado.vBC_IPI := FQuantidade; // Base é a quantidade
+      FResultado.vIPI := RoundTo(FQuantidade * FValorUnidIPI, -2);
+      // pIPI fica zerado pois é valor fixo
+    end;
+  end
+  else
+  begin
+    // Isento, Imune, Suspenso (01..05, 51..55)
+    FResultado.vBC_IPI := 0;
+    FResultado.pIPI := 0;
+    FResultado.vIPI := 0;
+  end;
 end;
 
 procedure TCalculadoraFiscal.CalcularPISCOFINS;
@@ -326,14 +457,64 @@ begin
   BasePISCOFINS := GetValorTotalItem;
   // *Importante: ICMS pode ser excluído da base do PIS/COFINS dependendo da decisão do STF ("Tese do Século")
   // Aqui faremos o cálculo padrão (Base Cheia), mas poderia haver uma flag para excluir o ICMS.
-  
-  FResultado.vBC_PIS := BasePISCOFINS;
-  FResultado.pPIS := FAliquotaPIS;
-  FResultado.vPIS := RoundTo(BasePISCOFINS * (FAliquotaPIS / 100), -2);
-  
-  FResultado.vBC_COFINS := BasePISCOFINS;
-  FResultado.pCOFINS := FAliquotaCOFINS;
-  FResultado.vCOFINS := RoundTo(BasePISCOFINS * (FAliquotaCOFINS / 100), -2);
+
+  // --- PIS ---
+  // CSTs Tributáveis: 01, 02
+  if (FCST_PIS = '01') or (FCST_PIS = '02') then
+  begin
+    FResultado.vBC_PIS := BasePISCOFINS;
+    FResultado.pPIS := FAliquotaPIS;
+    FResultado.vPIS := RoundTo(BasePISCOFINS * (FAliquotaPIS / 100), -2);
+  end
+  // CST Quantidade: 03
+  else if (FCST_PIS = '03') then
+  begin
+    FResultado.vBC_PIS := FQuantidade;
+    FResultado.vPIS := RoundTo(FQuantidade * FValorUnidPIS, -2);
+  end
+  // Outras Operações (pode ser tributado): 49..99
+  else if (StrToIntDef(FCST_PIS, 0) >= 49) and (FAliquotaPIS > 0) then
+  begin
+    FResultado.vBC_PIS := BasePISCOFINS;
+    FResultado.pPIS := FAliquotaPIS;
+    FResultado.vPIS := RoundTo(BasePISCOFINS * (FAliquotaPIS / 100), -2);
+  end
+  else
+  begin
+    // Isento/Alíquota Zero (04, 05, 06, 07, 08, 09)
+    FResultado.vBC_PIS := 0;
+    FResultado.pPIS := 0;
+    FResultado.vPIS := 0;
+  end;
+
+  // --- COFINS ---
+  // CSTs Tributáveis: 01, 02
+  if (FCST_COFINS = '01') or (FCST_COFINS = '02') then
+  begin
+    FResultado.vBC_COFINS := BasePISCOFINS;
+    FResultado.pCOFINS := FAliquotaCOFINS;
+    FResultado.vCOFINS := RoundTo(BasePISCOFINS * (FAliquotaCOFINS / 100), -2);
+  end
+  // CST Quantidade: 03
+  else if (FCST_COFINS = '03') then
+  begin
+    FResultado.vBC_COFINS := FQuantidade;
+    FResultado.vCOFINS := RoundTo(FQuantidade * FValorUnidCOFINS, -2);
+  end
+  // Outras Operações: 49..99
+  else if (StrToIntDef(FCST_COFINS, 0) >= 49) and (FAliquotaCOFINS > 0) then
+  begin
+    FResultado.vBC_COFINS := BasePISCOFINS;
+    FResultado.pCOFINS := FAliquotaCOFINS;
+    FResultado.vCOFINS := RoundTo(BasePISCOFINS * (FAliquotaCOFINS / 100), -2);
+  end
+  else
+  begin
+    // Isento/Alíquota Zero
+    FResultado.vBC_COFINS := 0;
+    FResultado.pCOFINS := 0;
+    FResultado.vCOFINS := 0;
+  end;
 end;
 
 procedure TCalculadoraFiscal.CalcularFCP;
@@ -404,8 +585,8 @@ begin
   CalcularReformaTributaria;
 
   // 2. Calcula IPI (pois pode compor base de outros impostos)
-  if FAliquotaIPI > 0 then
-    CalcularIPI;
+  // Agora considera CSTs específicos
+  CalcularIPI;
 
   // 3. Calcula ICMS baseado no Regime e CST/CSOSN
   if FRegime = rtRegimeNormal then
@@ -430,12 +611,15 @@ begin
   end;
 
   // 3. Calcula PIS e COFINS
-  // Verifica CST de PIS/COFINS se necessário. Assumindo tributação se alíquota > 0.
-  if (FAliquotaPIS > 0) or (FAliquotaCOFINS > 0) then
-    CalcularPISCOFINS;
+  // Verifica CST de PIS/COFINS dentro do método
+  CalcularPISCOFINS;
 
   // 4. Calcula FCP
   CalcularFCP;
+  
+  // 5. Calcula DIFAL (Se houver alíquotas configuradas)
+  if (FAliquotaICMSIntra > 0) and (FAliquotaICMSInter > 0) then
+    CalcularDIFAL;
 end;
 
 end.
