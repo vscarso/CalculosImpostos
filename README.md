@@ -1,109 +1,194 @@
-# 📘 Manual da Calculadora Fiscal (NFe / NFCe)
+# 📘 Manual Completo da Calculadora Fiscal (NFe / NFCe)
 
 > **Autor:** Vitor Scarso  
-> **Versão:** 1.0  
+> **Versão:** 1.1 (Detalhada)  
 > **Data:** 24/12/2025
 
 ---
 
-## 🎯 O que é isso?
+## 🎯 O que é esta classe?
 
-Esta é uma unidade inteligente (`Unit_CalculoImpostos`) projetada para **facilitar** a vida do desenvolvedor Delphi/Lazarus. Ela centraliza todas as regras chatas e complexas de tributação (ICMS, ST, IPI, PIS, COFINS e a nova **Reforma Tributária**) em uma única classe fácil de usar.
-
-Você pode usá-la de duas formas:
-1. 🧮 **Calculadora de Bolso:** Para fazer contas rápidas e isoladas.
-2. 📝 **Emissão de Notas:** Para calcular todos os impostos de um item e preencher o componente ACBr.
+A `TCalculadoraFiscal` é o coração do cálculo tributário. Ela resolve a complexidade de calcular bases de cálculo, reduções, MVA ajustada, DIFAL e as novas regras da Reforma Tributária, tudo em um único lugar.
 
 ---
 
-## 🚀 1. Modo "Calculadora de Bolso" (Cálculos Rápidos)
+## 📋 1. Campos Obrigatórios (O que preciso preencher?)
 
-Às vezes você só quer saber quanto é o **IBS** de um valor, ou qual a **Base Reduzida** de um produto, sem precisar criar uma Nota Fiscal inteira. Use os métodos isolados!
+Para que a calculadora funcione corretamente, você deve preencher os campos de acordo com o grupo de imposto que deseja calcular.
 
-### Tabela de Métodos Disponíveis
+### 📦 A. Dados Básicos do Produto (Sempre Obrigatórios)
+Estes campos formam a base de cálculo de todos os impostos.
 
-| O que você quer calcular? | Método para chamar | Exemplo |
+| Propriedade | Tipo | Descrição |
 | :--- | :--- | :--- |
-| **Imposto Simples** | `CalcularValorImposto` | 18% de R$ 100,00 = R$ 18,00 |
-| **Base Reduzida** | `CalcularBaseReduzida` | Reduzir 20% de R$ 1.000,00 = R$ 800,00 |
-| **IBS Estadual** | `CalcularValorIBS_UF` | IBS UF da Reforma Tributária |
-| **IBS Municipal** | `CalcularValorIBS_Mun` | IBS Mun da Reforma Tributária |
-| **CBS** | `CalcularValorCBS` | CBS Federal |
-| **Imposto Seletivo** | `CalcularValorIS` | Imposto do "Pecado" |
+| `ValorProduto` | Currency | Valor unitário * quantidade (valor bruto do item). |
+| `Quantidade` | Double | Quantidade comercializada (usado para IPI de Pauta). |
+| `ValorFrete` | Currency | (Opcional) Soma na base do ICMS, PIS, COFINS e IPI. |
+| `ValorSeguro` | Currency | (Opcional) Soma na base. |
+| `ValorOutrasDespesas` | Currency | (Opcional) Soma na base. |
+| `ValorDesconto` | Currency | (Opcional) Abate da base. |
 
-### 💡 Exemplo Prático
+### 🏛️ B. Configuração de Regime
+Define como o cálculo se comporta (Normal ou Simples).
 
-```pascal
-var
-  Calc: TCalculadoraFiscal;
-  ValorIBS, BaseReduzida: Currency;
-begin
-  Calc := TCalculadoraFiscal.Create;
-  try
-    // 1. Quero saber quanto é 17% de IBS sobre R$ 500,00
-    ValorIBS := Calc.CalcularValorIBS_UF(500.00, 17.00);
-    ShowMessage('O valor do IBS é: ' + CurrToStr(ValorIBS));
-
-    // 2. Quero aplicar uma redução de 60% na base de R$ 1.000,00
-    BaseReduzida := Calc.CalcularBaseReduzida(1000.00, 60.00);
-    ShowMessage('A base tributável é apenas: ' + CurrToStr(BaseReduzida));
-  finally
-    Calc.Free;
-  end;
-end;
-```
+| Propriedade | Valores |
+| :--- | :--- |
+| `Regime` | `rtRegimeNormal` ou `rtSimplesNacional` |
 
 ---
 
-## 🔌 2. Integrando com o ACBr (O Pulo do Gato)
+### 📉 C. Campos por Imposto
 
-Esta classe foi feita pensando em preencher o componente **ACBrNFe**. Primeiro você calcula, depois você joga os valores para o componente.
+#### 1. ICMS Normal (Próprio)
+*Necessário para CSTs: 00, 20, 51, 90, etc.*
+*   `CST_CSOSN`: Código da Situação Tributária (Ex: '00', '20').
+*   `AliquotaICMS`: Alíquota interna ou interestadual (Ex: 18.00).
+*   *(Opcional)* `ReducaoBaseICMS`: Percentual de redução (Ex: 33.33).
+*   *(Opcional)* `AliquotaDiferimento`: Para CST 51 (Ex: 100 para diferimento total).
 
-### Exemplo de Uso Real
+#### 2. ICMS ST (Substituição Tributária)
+*Necessário para CSTs: 10, 30, 70, 201, 202, etc.*
+*   `CST_CSOSN`: Ex: '10'.
+*   `MVAOriginal`: Margem de Valor Agregado original (Ex: 40.00).
+*   `AliquotaInternaST`: Alíquota interna do estado de destino (Ex: 18.00).
+*   `AliquotaICMS`: Alíquota interestadual (usada para abater o ICMS próprio).
+*   *(Opcional)* `AutoAjustarMVA`: Se `True`, ajusta a MVA automaticamente para operações interestaduais.
+
+#### 3. PIS e COFINS
+*   `CST_PIS` e `CST_COFINS`: Ex: '01' (Tributado) ou '06' (Isento).
+*   `AliquotaPIS`: Ex: 1.65.
+*   `AliquotaCOFINS`: Ex: 7.60.
+
+#### 4. IPI
+*   `CST_IPI`: Ex: '50' (Tributado).
+*   `AliquotaIPI`: Ex: 10.00.
+
+#### 5. Reforma Tributária (IBS / CBS / IS)
+*   `CST_IBS` e `CST_CBS`: Novos códigos (Ex: '01' Tributado, '04' Isento).
+*   `AliquotaCBS`: Ex: 0.90.
+*   `AliquotaIBS_UF`: Alíquota Estadual (Ex: 10.00).
+*   `AliquotaIBS_Mun`: Alíquota Municipal (Ex: 2.00).
+
+---
+
+## 📚 2. Exemplos de Uso (Cenários Reais)
+
+Aqui estão exemplos prontos para copiar e colar.
+
+### Cenário 1: Venda Normal (Lucro Real/Presumido) - CST 00
+Venda dentro do estado, tributada integralmente.
 
 ```pascal
-var
-  Calc: TCalculadoraFiscal;
-  Prod: TDetCollectionItem; // Item do ACBr
+var Calc: TCalculadoraFiscal;
 begin
-  // 1. Configurar a Calculadora
   Calc := TCalculadoraFiscal.Create;
   try
-    // Dados do Produto
+    // Dados do Item
     Calc.ValorProduto := 1000.00;
-    Calc.ValorFrete   := 50.00;
     
-    // Configuração Fiscal (Ex: Venda para Consumidor - CST 00)
-    Calc.Regime       := rtRegimeNormal;
-    Calc.CST_CSOSN    := '00';
+    // Configuração
+    Calc.Regime := rtRegimeNormal;
+    Calc.CST_CSOSN := '00';
     Calc.AliquotaICMS := 18.00;
     
-    // === CALCULAR TUDO AGORA ===
+    // PIS/COFINS
+    Calc.CST_PIS := '01';
+    Calc.AliquotaPIS := 1.65;
+    Calc.CST_COFINS := '01';
+    Calc.AliquotaCOFINS := 7.60;
+    
     Calc.Calcular;
     
-    // 2. Preencher o ACBr
-    // Supondo que você já adicionou o item no componente ACBr
-    with Prod.Imposto.ICMS do 
-    begin
-      CST      := cst00; 
-      orig     := oeNacional;
-      modBC    := dbiValorOperacao;
-      
-      // Aqui entram os valores calculados pela nossa classe!
-      vBC      := Calc.Resultado.vBC_ICMS;
-      pICMS    := Calc.Resultado.pICMS;
-      vICMS    := Calc.Resultado.vICMS;
-    end;
+    // Resultados
+    ShowMessage('ICMS: ' + CurrToStr(Calc.Resultado.vICMS)); // 180.00
+    ShowMessage('PIS: ' + CurrToStr(Calc.Resultado.vPIS));   // 16.50
+    ShowMessage('COFINS: ' + CurrToStr(Calc.Resultado.vCOFINS)); // 76.00
+  finally
+    Calc.Free;
+  end;
+end;
+```
+
+### Cenário 2: Venda com ST (Substituição Tributária) - CST 10
+Venda para revendedor em outro estado (precisa ajustar MVA).
+
+```pascal
+var Calc: TCalculadoraFiscal;
+begin
+  Calc := TCalculadoraFiscal.Create;
+  try
+    Calc.ValorProduto := 1000.00;
     
-    // Se tiver PIS/COFINS também já está pronto:
-    with Prod.Imposto.PIS do
-    begin
-      CST  := pis01;
-      vBC  := Calc.Resultado.vBC_PIS;
-      pPIS := Calc.Resultado.pPIS;
-      vPIS := Calc.Resultado.vPIS;
-    end;
+    Calc.Regime := rtRegimeNormal;
+    Calc.CST_CSOSN := '10'; // Tributada com ST
     
+    // Parâmetros para ST Interestadual
+    Calc.AliquotaICMS := 12.00;       // Interestadual (Origem)
+    Calc.AliquotaInternaST := 18.00;  // Interna (Destino)
+    Calc.MVAOriginal := 50.00;        // MVA Protocolo
+    Calc.AutoAjustarMVA := True;      // <--- O Pulo do Gato: Ajusta MVA sozinho!
+    
+    Calc.Calcular;
+    
+    // A classe ajusta a MVA, calcula a base ST e desconta o ICMS próprio
+    ShowMessage('MVA Ajustada usada: ' + FloatToStr(Calc.MVA) + '%');
+    ShowMessage('Valor do ICMS ST a recolher: ' + CurrToStr(Calc.Resultado.vICMS_ST));
+  finally
+    Calc.Free;
+  end;
+end;
+```
+
+### Cenário 3: Simples Nacional (Crédito) - CSOSN 101
+Empresa do Simples permitindo crédito de ICMS para o cliente.
+
+```pascal
+var Calc: TCalculadoraFiscal;
+begin
+  Calc := TCalculadoraFiscal.Create;
+  try
+    Calc.ValorProduto := 100.00;
+    Calc.Regime := rtSimplesNacional;
+    Calc.CST_CSOSN := '101';
+    
+    // Alíquota que consta na tabela do Simples para a faixa de faturamento
+    Calc.AliquotaCreditoSN := 3.5; 
+    
+    Calc.Calcular;
+    
+    ShowMessage('Valor Crédito ICMS: ' + CurrToStr(Calc.Resultado.vCredICMSSN));
+  finally
+    Calc.Free;
+  end;
+end;
+```
+
+### Cenário 4: Reforma Tributária (IBS/CBS)
+Calculando os novos impostos com detalhamento UF/Município.
+
+```pascal
+var Calc: TCalculadoraFiscal;
+begin
+  Calc := TCalculadoraFiscal.Create;
+  try
+    Calc.ValorProduto := 2000.00;
+    
+    // CSTs da Reforma (01 = Tributado)
+    Calc.CST_CBS := '01';
+    Calc.CST_IBS := '01';
+    
+    // Alíquotas
+    Calc.AliquotaCBS := 0.90;      // Federal
+    Calc.AliquotaIBS_UF := 10.00;  // Estadual
+    Calc.AliquotaIBS_Mun := 2.00;  // Municipal
+    
+    Calc.Calcular;
+    
+    // Resultados Separados
+    ShowMessage('CBS: ' + CurrToStr(Calc.Resultado.vCBS));
+    ShowMessage('IBS Estado: ' + CurrToStr(Calc.Resultado.vIBS_UF));
+    ShowMessage('IBS Município: ' + CurrToStr(Calc.Resultado.vIBS_Mun));
+    ShowMessage('Total IBS: ' + CurrToStr(Calc.Resultado.vIBS));
   finally
     Calc.Free;
   end;
@@ -112,34 +197,42 @@ end;
 
 ---
 
-## ⚖️ 3. Reforma Tributária (IBS e CBS)
+## 🔌 Integração com ACBr (Exemplo Completo)
 
-A classe já está preparada para o futuro! Ela entende os novos códigos de situação tributária (CST) da Reforma.
-
-### Como funciona?
-
-Se você informar um CST de **Isenção** (ex: `04`), a calculadora vai zerar o imposto automaticamente, mesmo que você tenha informado uma alíquota. Isso evita erros de cálculo!
+Como pegar os dados da calculadora e preencher o componente `ACBrNFe`.
 
 ```pascal
-  // Exemplo: Produto Isento na Reforma
-  Calc.CST_IBS := '04'; // Operação Isenta
-  Calc.AliquotaIBS_UF := 12.00; 
+// Supondo 'Prod' como o item da nota no ACBr
+with Prod.Imposto.ICMS do 
+begin
+  // CST e Origem você define baseada na regra de negócio
+  CST := cst00; 
+  orig := oeNacional;
   
-  Calc.CalcularReformaTributaria;
+  // Valores vêm da Calculadora
+  modBC := dbiValorOperacao;
+  vBC   := Calc.Resultado.vBC_ICMS;
+  pICMS := Calc.Resultado.pICMS;
+  vICMS := Calc.Resultado.vICMS;
   
-  // O resultado será ZERO, pois o CST manda isentar.
-  // Calc.Resultado.vIBS_UF -> 0.00
+  // Se fosse ST
+  // vBCST := Calc.Resultado.vBC_ST;
+  // vICMSST := Calc.Resultado.vICMS_ST;
+  // pMVAST := Calc.Resultado.pMVA_ST;
+end;
 ```
 
 ---
 
-## ✨ Dicas de Ouro
+## 🧮 Métodos de Acesso Rápido (Calculadora de Bolso)
 
-1. **Auto Ajuste de MVA**: Se você estiver calculando ST interestadual, ative a propriedade `AutoAjustarMVA := True`. A classe fará a fórmula complexa do ajuste automaticamente.
-2. **DIFAL**: A classe também calcula o DIFAL (Partilha de ICMS) para vendas interestaduais para consumidor final.
-3. **Desoneração**: Se você informar `% Redução` e `Motivo Desoneração`, ela calcula automaticamente o "ICMS Desonerado" (aquele que é abatido do valor da nota).
+Se você não quer preencher tudo isso e só quer fazer uma conta rápida:
+
+| Método | Exemplo de Uso |
+| :--- | :--- |
+| `CalcularValorImposto(Base, Aliq)` | `Calc.CalcularValorImposto(100, 18)` -> 18.00 |
+| `CalcularBaseReduzida(Base, %Red)` | `Calc.CalcularBaseReduzida(100, 20)` -> 80.00 |
+| `CalcularValorIBS_UF(Base, Aliq)` | `Calc.CalcularValorIBS_UF(1000, 17)` -> 170.00 |
 
 ---
-
-> **Dúvidas?** Consulte o código fonte em `Unit_CalculoImpostos.pas`, ele está todo comentado!
-
+> **Dúvidas?** Consulte o código fonte em `Unit_CalculoImpostos.pas`.
